@@ -11,3 +11,13 @@ pipelines:
             - ruby ssm-ops.rb -i "development/Worker" -c "sudo -H -u deploy bash -c 'cd /opt/deployed/threads && ./bin/rake db:migrate'"
             - ruby ssm-ops.rb -i "development/Web" -c "sudo systemctl restart puma"
             - ruby ssm-ops.rb -i "development/Worker" -c "sudo -H -u deploy bash -c 'sudo systemctl start delayed_job@{0..4}'"
+    reset-test-data:
+      - step:
+          script:
+            - gem install bundler:2.2.4
+            - bundle install
+            - ruby ssm-ops.rb -i "development/Worker" -c "sudo systemctl stop delayed_job@1 && sudo systemctl stop delayed_job@2 && sudo systemctl stop delayed_job@3 && sudo systemctl stop delayed_job@4"
+            - ruby ssm-ops.rb -i "development/Web" -c "sudo systemctl stop puma"
+            - ruby ssm-ops.rb -i "development/Worker" -c "sudo -H -u deploy bash -c 'cd /opt/deployed/threads && ./bin/rake db:reset'"
+            - ruby ssm-ops.rb -i "development/Worker" -c "sudo -H -u deploy bash -c 'sudo systemctl start delayed_job@{0..4}'"
+            - ruby ssm-ops.rb -i "development/Web" -c "sudo systemctl start puma"
