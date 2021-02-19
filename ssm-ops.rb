@@ -248,8 +248,6 @@ def main
     selected = $instances.select { |i| $options[:instances].include?(i[:name]) }.map{ |i| i[:id] }
   else
     selected = choose_instances(selection_style)
-    puts selected.inspect
-    exit
   end
 
   if selected.empty?
