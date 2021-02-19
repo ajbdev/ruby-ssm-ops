@@ -15,10 +15,6 @@ $options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: hotfix.rb [options]"
 
-  # opts.on("-i", "--interactive", "Interactive mode") do |i|
-  #   options[:interactive] = i
-  # end
-
   opts.on("-i NAME", "--instances=NAME", "Instance name(s) comma-seperated (e.g., development-web,development-worker)") do |i|
     $options[:instances] = i.split(',')
   end

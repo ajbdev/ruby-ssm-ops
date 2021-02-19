@@ -8,4 +8,4 @@ pipelines:
             - echo ${AWS_REGION}
             - gem install bundler:2.2.4
             - bundle install
-            - ruby ssm-ops.rb -i development/Worker -c "uptime"
+            - ruby ssm-ops.rb -i development/Worker -c 'uptime'
