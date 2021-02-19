@@ -161,8 +161,6 @@ def operate(operation, selected)
 
   selected = [*selected]
 
-  puts $options.inspect
-
   cmd_resp = $ssm.send_command({
                                 instance_ids: selected,
                                 document_name: "AWS-RunShellScript",
