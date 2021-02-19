@@ -7,4 +7,4 @@ pipelines:
           script:
             - gem install bundler:2.2.4
             - bundle install
-            - ruby ssm-ops.rb -i development/Web,development/Worker -c "uptime"
+            - ruby ssm-ops.rb -i "development/Web,development/Worker" -c "uptime"
