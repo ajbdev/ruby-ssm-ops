@@ -5,5 +5,6 @@ pipelines:
     show-uptime:
       - step:
           script:
+            - gem install bundler:2.2.4
             - bundle install
             - ruby ssm-ops.rb -i development/Worker,development/Web -c "uptime"
