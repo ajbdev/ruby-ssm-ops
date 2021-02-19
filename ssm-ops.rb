@@ -29,7 +29,7 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-unless $stdin.tty?
+unless $stdin.tty? and !$options.has_key?(:commands)
   $options[:commands] = $stdin.read.split('\n')
 end
 
