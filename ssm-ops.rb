@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 # Simplified CLI interface for choosing $instances and running commands on them
 
 require 'aws-sdk-ssm'
