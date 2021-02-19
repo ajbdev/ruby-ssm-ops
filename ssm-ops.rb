@@ -12,6 +12,10 @@ require 'optparse'
 
 $options = {}
 
+unless $stdin.tty? and !$options.has_key?(:commands)
+  $options[:commands] = $stdin.read.split('\n')
+end
+
 OptionParser.new do |opts|
   opts.banner = "Usage: hotfix.rb [options]"
 
@@ -29,9 +33,6 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-unless $stdin.tty? and !$options.has_key?(:commands)
-  $options[:commands] = $stdin.read.split('\n')
-end
 
 $ssm = Aws::SSM::Client.new
 ec2 = Aws::EC2::Resource.new
