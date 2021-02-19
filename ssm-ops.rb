@@ -5,14 +5,42 @@ require 'aws-sdk-ec2'
 require 'tty-prompt'
 require 'tty-spinner'
 require 'colorize'
+require 'optparse'
 
+
+$options = {}
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: hotfix.rb [options]"
+
+  # opts.on("-i", "--interactive", "Interactive mode") do |i|
+  #   options[:interactive] = i
+  # end
+
+  opts.on("-i NAME", "--instances=NAME", "Instance name(s) comma-seperated (e.g., development-web,development-worker)") do |i|
+    $options[:instances] = i.split(',')
+  end
+
+  opts.on("-c COMMANDS", "--commands=COMMANDS", "Run custom commands (can also be redirected in like `ruby hotfix.rb < mycommands.sh`") do |c|
+    $options[:commands] = c.split('\n')
+  end
+
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+end.parse!
+
+unless $stdin.tty?
+  $options[:commands] = $stdin.read.split('\n')
+end
 
 $ssm = Aws::SSM::Client.new
 ec2 = Aws::EC2::Resource.new
 $prompt = TTY::Prompt.new(interrupt: :signal)
 
 trap "INT" do
-  puts "\n\nDeployment canceled".red
+  puts "\n\nOperation canceled".red
   exit 130
 end
 
@@ -110,11 +138,17 @@ end
 def operate(operation, selected)
   case operation
   when 1
+    selected = selected.kind_of?(Array) ? selected.first : selected
     exec("aws ssm start-session --target #{selected}")
   when 2
+    selected = selected.kind_of?(Array) ? selected.first : selected
     exec("aws ssm start-session --target #{selected} --document-name AWS-StartPortForwardingSession --parameters '{\"portNumber\":[\"22\"],\"localPortNumber\":[\"9999\"]}'")
   when 3
-    commands = $prompt.multiline("Enter commands")
+    if $options.has_key?(:commands)
+      commands = $options[:commands]
+    else
+      commands = $prompt.multiline("Enter commands")
+    end
   when 4
     key = get_deploy_key
     user = prompt_for_user
@@ -123,9 +157,8 @@ def operate(operation, selected)
     ]
   end
 
-
   puts ""
-  $prompt.keypress("Press any key to start (Deployment starts in :countdown seconds)", timeout: 10)
+  $prompt.keypress("Press any key to start (Deployment starts in :countdown seconds)", timeout: 10) unless $options.has_key?(:commands)
 
   selected = [*selected]
 
@@ -203,15 +236,24 @@ def operate(operation, selected)
 end
 
 def main
-  operation = choose_operation
+  operation = $options.has_key?(:commands) ? 3 : choose_operation
 
   exit if operation == 0
 
   selection_style = (operation == 1 || operation == 2) ? :select : :multi_select
 
-  selected = choose_instances(selection_style)
+  if $options.has_key?(:instances)
+    selected = $instances.select { |i| $options[:instances].include?(i[:name]) }.map{ |i| i[:id] }
+  else
+    selected = choose_instances(selection_style)
+    puts selected.inspect
+    exit
+  end
 
-  exit if selected.empty?
+  if selected.empty?
+    puts "No instances selected"
+    exit
+  end
 
   operate(operation, selected)
 end
