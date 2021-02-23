@@ -27,6 +27,22 @@ OptionParser.new do |opts|
     $options[:commands] = c.split('\n')
   end
 
+  opts.on("-d VERSION","--deploy=VERSION", "Version to deploy") do |d|
+    $options[:deploy_version] = d
+  end
+
+  opts.on("-r REPOURL", "--repo=REPOURL", "Full URL to git repo to deploy from (use in conjunction with -d)") do |r|
+    $options[:repo_url] = r
+  end
+
+  opts.on("-k /path/to/key","--key=/path/to/key", "Path to private key to use") do |k|
+    $options[:key] = k
+  end
+
+  opts.on("-k /path/to/key","--key=/path/to/key", "Path to public key to use") do |k|
+    $options[:pub_key] = k
+  end
+
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
     exit
@@ -43,8 +59,6 @@ trap "INT" do
   exit 130
 end
 
-REPO_URL = `git config --get remote.origin.url`.strip
-CURRENT_BRANCH = `git rev-parse --abbrev-ref HEAD`.strip
 
 ids = $ssm.describe_instance_information.instance_information_list.map(&:instance_id)
 
@@ -62,11 +76,14 @@ end
 $instances.sort_by! { |a| a[:name] }
 
 def choose_operation
+  return 3 if $options.has_key?(:commands)
+  return 5 if $options.has_key?(:deploy_version)
   $prompt.select("Select operation to run:") do |menu|
     menu.choice "Start SSH session (via SSM)", 1
     menu.choice "Start portforwarding session (via SSM)", 2
     menu.choice "Run custom command(s)", 3
     menu.choice "Install pub key", 4
+    menu.choice "Deploy hotfix", 5
     menu.choice "Exit", 0
   end
 end
@@ -80,10 +97,6 @@ def choose_instances(selection_style)
   end
 end
 
-def version_to_deploy
-  $prompt.ask("Version to deploy:", default: CURRENT_BRANCH)
-end
-
 def prompt_for_user
   loop do
     user = $prompt.ask("Enter user to install for:", default: "ubuntu")
@@ -94,9 +107,27 @@ def prompt_for_user
   end
 end
 
+def get_public_key
+  loop do
+    if $options.has_key?(:pub_key)
+      key_file = $options[:pub_key]
+    else
+      key_file = $prompt.ask("Enter path of pub key:", default: "#{ENV['HOME']}/.ssh/id_rsa.pub")
+    end
+
+    return `cat #{key_file}` if File.file?(key_file)
+
+    puts "Invalid path to public key"
+  end
+end
+
 def get_deploy_key
   loop do
-    key_file = $prompt.ask("Enter path of pub key:", default: "#{ENV['HOME']}/.ssh/id_rsa.pub")
+    if $options.has_key?(:key)
+      key_file = $options[:key]
+    else
+      key_file = $prompt.ask("Enter path of deploy key:", default: "#{ENV['HOME']}/.ssh/id_rsa")
+    end
 
     return `cat #{key_file}` if File.file?(key_file)
 
@@ -133,6 +164,59 @@ end
 #     "sudo -u deploy bundle binstubs puma --path ./sbin"
 #   ]
 # end
+#
+#
+
+def get_repo_url
+  return $options[:repo_url] if $options.has_key?(:repo_url)
+
+  loop do
+    url = $prompt.ask("Enter repo URL :")
+
+    return url if url.size > 0
+
+    puts "Invalid URL"
+  end
+end
+
+def get_deploy_version
+  return $options[:deploy_version] if $options.has_key?(:deploy_version)
+
+  loop do
+    version = $prompt.ask("Enter branch/tag to deploy :")
+
+    return version if version.size > 0
+
+    puts "Invalid version"
+  end
+end
+
+def deploy_version(key, repo_url, version)
+  base_dir = "/opt/deployed/"
+  deploy_dir = "new"
+
+  [
+    "sudo su - deploy",
+    "cd /opt/deployed",
+    "echo \"#{key}\" > /home/deploy/.ssh/id_rsa",
+    "chmod 600 /home/deploy/.ssh/id_rsa",
+    "chown deploy:www-data /home/deploy/.ssh/id_rsa",
+    "sudo rm -rf #{base_dir}#{deploy_dir}",
+    "sudo -H -u deploy bash -c 'git clone -b #{version} #{repo_url} #{base_dir}#{deploy_dir}'",
+    "rm /home/deploy/.ssh/id_rsa",
+    "sudo -H -u deploy bash -c 'cd #{base_dir}#{deploy_dir} && ./bin/bundle install --deployment'",
+    "sudo -H -u deploy bash -c 'cp #{base_dir}threads/config/database.yml #{base_dir}#{deploy_dir}/config/database.yml'",
+    "sudo -H -u deploy bash -c 'cp #{base_dir}threads/config/application.yml #{base_dir}#{deploy_dir}/config/application.yml'",
+    "sudo -H -u deploy bash -c 'cd #{base_dir}#{deploy_dir}/doc/render_perf_chart && npm install'",
+    "sudo -H -u deploy bash -c 'cd #{base_dir}#{deploy_dir} && ./bin/rake assets:precompile'",
+    "sudo rm -rf #{base_dir}/old",
+    "sudo -H -u deploy bash -c 'mv #{base_dir}/current #{base_dir}/old'",
+    "sudo -H -u deploy bash -c 'mv #{base_dir}/new #{base_dir}/current'",
+    "sudo systemctl is-active --quiet delayed_job@0 && systemctl restart delayed_job@{0..3}",
+    "sudo systemctl is-active --quiet puma && systemctl restart puma",
+    "sudo rm -rf /opt/deployed/threads"
+  ]
+end
 
 def operate(operation, selected)
   case operation
@@ -149,11 +233,16 @@ def operate(operation, selected)
       commands = $prompt.multiline("Enter commands")
     end
   when 4
-    key = get_deploy_key
+    key = get_public_key
     user = prompt_for_user
     commands = [
       "sudo -u #{user} echo \"#{key}\" >> /home/#{user}/.ssh/authorized_keys"
     ]
+  when 5
+    key = get_deploy_key
+    repo_url = get_repo_url
+    version = get_deploy_version
+    commands = deploy_version(key, repo_url, version)
   end
 
   puts ""
@@ -235,7 +324,7 @@ def operate(operation, selected)
 end
 
 def main
-  operation = $options.has_key?(:commands) ? 3 : choose_operation
+  operation = choose_operation
 
   exit if operation == 0
 
