@@ -135,38 +135,6 @@ def get_deploy_key
   end
 end
 
-# operation = $prompt.select("Select deployment operation:") do |menu|
-#   menu.choice "Normal deployment", 1,  disabled: "(Under construction)"
-#
-#   if selected.count != 1
-#     menu.choice "Database migration", 2, disabled: "(Can only be performed on one instance)".light_black
-#   else
-#     menu.choice "Database migration", 2,  disabled: "(Under construction)"
-#   end
-#   menu.choice "Run command(s)", 3
-# end
-
-# def standard_deploy(key, version)
-#   deploy_dir = "deploy-#{Time.now.to_i}"
-#
-#   [
-#     "sudo su - deploy",
-#     "cd /opt/deployed",
-#     "echo \"#{key}\" > deploy.key",
-#     "chmod 600 deploy.key",
-#     "ssh-agent bash -c 'ssh-add deploy.key; sudo -u deploy GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no\" git clone #{REPO_URL} #{deploy_dir}'",
-#     "rm deploy.key",
-#     "cd #{deploy_dir}",
-#     "sudo -u deploy git checkout #{version}",
-#     "sudo -u deploy cp ../threads/config/database.yml ./config/database.yml",
-#     "sudo -u deploy cp ../threads/config/application.yml ./config/application.yml",
-#     "sudo -u deploy bundle install",
-#     "sudo -u deploy bundle binstubs puma --path ./sbin"
-#   ]
-# end
-#
-#
-
 def get_repo_url
   return $options[:repo_url] if $options.has_key?(:repo_url)
 
@@ -191,9 +159,17 @@ def get_deploy_version
   end
 end
 
-def deploy_version(key, repo_url, version)
-  base_dir = "/opt/deployed/"
-  deploy_dir = "new"
+def deploy_hotfix_version(key, version)
+  puts "WARNING".white.on_red.blink
+  puts "This deploy operation should only be performed for minor code changes"
+  puts "It does NOT perform a bundle install or asset percompilation or any other app setup step"
+  puts ""
+
+  unless $prompt.yes?("Continue?")
+    puts "Canceled"
+    exit
+  end
+
 
   [
     "sudo su - deploy",
@@ -201,20 +177,13 @@ def deploy_version(key, repo_url, version)
     "echo \"#{key}\" > /home/deploy/.ssh/id_rsa",
     "chmod 600 /home/deploy/.ssh/id_rsa",
     "chown deploy:www-data /home/deploy/.ssh/id_rsa",
-    "sudo rm -rf #{base_dir}#{deploy_dir}",
-    "sudo -H -u deploy bash -c 'git clone -b #{version} #{repo_url} #{base_dir}#{deploy_dir}'",
+    "sudo -H -u deploy bash -c 'cd /opt/deployed/threads && git fetch --all && git checkout --force #{version} && git pull'",
     "rm /home/deploy/.ssh/id_rsa",
-    "sudo -H -u deploy bash -c 'cd #{base_dir}#{deploy_dir} && ./bin/bundle install --deployment'",
-    "sudo -H -u deploy bash -c 'cp #{base_dir}threads/config/database.yml #{base_dir}#{deploy_dir}/config/database.yml'",
-    "sudo -H -u deploy bash -c 'cp #{base_dir}threads/config/application.yml #{base_dir}#{deploy_dir}/config/application.yml'",
-    "sudo -H -u deploy bash -c 'cd #{base_dir}#{deploy_dir}/doc/render_perf_chart && npm install'",
-    "sudo -H -u deploy bash -c 'cd #{base_dir}#{deploy_dir} && ./bin/rake assets:precompile'",
-    "sudo rm -rf #{base_dir}/old",
-    "sudo -H -u deploy bash -c 'mv #{base_dir}/current #{base_dir}/old'",
-    "sudo -H -u deploy bash -c 'mv #{base_dir}/new #{base_dir}/current'",
-    "sudo systemctl is-active --quiet delayed_job@0 && systemctl restart delayed_job@{0..3}",
-    "sudo systemctl is-active --quiet puma && systemctl restart puma",
-    "sudo rm -rf /opt/deployed/threads"
+    "sudo systemctl is-active --quiet delayed_job@0 && sudo systemctl restart delayed_job@0 || echo \"delayed_job@0 inactive\"",
+    "sudo systemctl is-active --quiet delayed_job@1 && sudo systemctl restart delayed_job@1 || echo \"delayed_job@1 inactive\"",
+    "sudo systemctl is-active --quiet delayed_job@2 && sudo systemctl restart delayed_job@2 || echo \"delayed_job@2 inactive\"",
+    "sudo systemctl is-active --quiet delayed_job@3 && sudo systemctl restart delayed_job@3 || echo \"delayed_job@3 inactive\"",
+    "sudo systemctl is-active --quiet puma && systemctl restart puma || echo \"puma inactive\"",
   ]
 end
 
@@ -240,9 +209,8 @@ def operate(operation, selected)
     ]
   when 5
     key = get_deploy_key
-    repo_url = get_repo_url
     version = get_deploy_version
-    commands = deploy_version(key, repo_url, version)
+    commands = deploy_hotfix_version(key, version)
   end
 
   puts ""
