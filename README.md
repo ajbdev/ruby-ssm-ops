@@ -9,7 +9,7 @@ Download the script and run `bundle install` wherever you downloaded it.
 ### Usage
 
 ```
-Usage: hotfix.rb [options]
+Usage: ssm-ops.rb [options]
 -i, --instances=NAME             Instance name(s) comma-seperated (e.g., development-web,development-worker)
 -c, --commands=COMMANDS          Run custom commands (can also be redirected in like `ruby hotfix.rb < mycommands.sh`
 -h, --help                       Show this message
